@@ -13,12 +13,19 @@ implicit positive event; star ratings are excluded from targets and features.
 - Build every aggregate, feature, and user-history context as of the prediction timestamp.
 - Keep items first observed after the training boundary out of the primary candidate catalog.
 
+**Threshold distinction:** the training-only 5-core defines the warm collaborative dataset.
+The separate two-prior-interaction rule determines whether an individual warm target event has
+enough earlier warm-catalog history to become a training or replay example. It does not replace
+or weaken the 5-core criterion.
+
 ## Model and evaluation
 
 The user tower combines a learned user representation with a recency-weighted summary of the
-last 20 interacted products. A sampled-softmax/contrastive objective uses in-batch and a
-uniform/popularity negative mixture. FAISS retrieves 200 candidates; LightGBM LambdaRank
-returns 10 products.
+last 20 interacted products. Warm retrieval items use ID embeddings only. Metadata has two
+separate downstream roles: time-safe similarity/affinity features for the ranker, and a
+metadata-only TF-IDF representation for the synthetic cold-item fallback. A
+sampled-softmax/contrastive objective uses in-batch and a uniform/popularity negative mixture.
+FAISS retrieves 200 candidates; LightGBM LambdaRank returns 10 products.
 
 Ranker training uses rolling temporal cross-fitting: a retriever trained on an earlier fold
 generates candidate lists for the next fold. This prevents a ranking feature from receiving a
@@ -28,6 +35,19 @@ Sequential replay freezes model weights before test. It reports retrieval Recall
 final NDCG@10, and slice metrics by user-history depth, item popularity, and warm/synthetic
 cold status. Exact FAISS is the quality baseline; HNSW is tuned on the measured
 recall–latency curve.
+
+The main replay scores every eligible warm test event in chronological order. Products already
+seen by that user are excluded from candidate and final lists. Ranker training keeps only
+cross-fitted candidate lists where retrieval found the target; missed targets are never injected
+and score zero in end-to-end replay.
+
+## Baselines and model selection
+
+Time-decayed popularity is tuned over 30-, 90-, and 180-day half-lives on validation only.
+Item–item collaborative filtering uses training-only cosine similarity and a recency-weighted
+history of up to 20 products. Retriever training uses at most 20 epochs with patience-three
+early stopping on validation Recall@100. Ranking cross-fitting uses three chronological folds
+and computes the 5-core separately within each earlier fold.
 
 ## Operational assumptions
 

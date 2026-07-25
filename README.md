@@ -51,6 +51,7 @@ Raw data belongs in `data/raw/` and is intentionally ignored by Git. See
 
 ```bash
 uv run rekindle prepare-data --config config/base.yaml
+uv run rekindle fit-baselines --config config/base.yaml
 uv run rekindle train-retriever --config config/base.yaml
 uv run rekindle generate-ranker-data --config config/base.yaml
 uv run rekindle train-ranker --config config/base.yaml
@@ -73,3 +74,6 @@ metadata-only cold-item behavior is reported as a separately labelled synthetic 
 Headline metrics are retrieval Recall@100, final NDCG@10, and P50/P95 stage latency. The
 final report will compare time-decayed popularity, item–item CF, retrieval-only, and the
 two-stage system.
+
+The training-only 5-core determines the warm collaborative corpus. A separate two-prior-event
+rule decides whether an individual warm target has enough earlier history for training or replay.

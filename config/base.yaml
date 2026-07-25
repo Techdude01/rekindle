@@ -16,11 +16,13 @@ split:
   validation_fraction: 0.10
   test_fraction: 0.10
   replay_history_size: 20
+  min_prior_interactions: 2
 
 retrieval:
   embedding_dim: 128
   batch_size: 512
-  epochs: 12
+  max_epochs: 20
+  early_stopping_patience: 3
   learning_rate: 0.001
   sampled_negatives_per_positive: 4
   candidate_count: 200
@@ -31,6 +33,11 @@ retrieval:
 ranking:
   output_count: 10
   objective: lambdarank
+
+baselines:
+  popularity_half_lives_days: [30, 90, 180]
+  item_cf_history_size: 20
+  item_cf_recency_decay: 0.8
 
 tracking:
   uri: file:./mlruns

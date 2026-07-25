@@ -5,6 +5,9 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from rekindle.baselines.data import load_warm_events
+from rekindle.baselines.item_cf import ItemItemCosine
+from rekindle.baselines.popularity import TimeDecayedPopularity
 from rekindle.config import load_config
 from rekindle.data.prepare import prepare_dataset
 
@@ -28,6 +31,35 @@ def prepare_data(
     """Extract canonical event and metadata Parquet tables from local Amazon JSONL files."""
     manifest = prepare_dataset(_load(config), _project_root())
     console.print(f"[green]Prepared dataset.[/green] Manifest: {manifest}")
+
+
+@app.command("fit-baselines")
+def fit_baselines(
+    config: Path = CONFIG_OPTION,
+) -> None:
+    """Fit validation-ready popularity and item–item CF artifacts from warm training events."""
+    settings = _load(config)
+    project_root = _project_root()
+    interactions_path = project_root / settings["data"]["prepared_interactions_path"]
+    if not interactions_path.exists():
+        raise typer.BadParameter("Run prepare-data before fitting baselines.")
+
+    events = load_warm_events(interactions_path, split="train")
+    artifact_directory = project_root / "artifacts/baselines"
+    artifact_directory.mkdir(parents=True, exist_ok=True)
+    for half_life_days in settings["baselines"]["popularity_half_lives_days"]:
+        model = TimeDecayedPopularity.fit(events, half_life_days=half_life_days)
+        model.save(artifact_directory / f"popularity-{half_life_days}d.json")
+
+    item_cf = ItemItemCosine.fit(
+        events,
+        recency_decay=settings["baselines"]["item_cf_recency_decay"],
+    )
+    item_cf.save(artifact_directory / "item-cosine")
+    console.print(
+        "[green]Fitted baselines.[/green] "
+        f"{events.height:,} warm training events, {len(item_cf.item_ids):,} candidate items."
+    )
 
 
 @app.command("train-retriever")
