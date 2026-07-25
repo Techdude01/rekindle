@@ -46,8 +46,11 @@ and score zero in end-to-end replay.
 Time-decayed popularity is tuned over 30-, 90-, and 180-day half-lives on validation only.
 Item–item collaborative filtering uses training-only cosine similarity and a recency-weighted
 history of up to 20 products. Retriever training uses at most 20 epochs with patience-three
-early stopping on validation Recall@100. Ranking cross-fitting uses three chronological folds
-and computes the 5-core separately within each earlier fold.
+early stopping on validation Recall@100 against a fixed 999-negative sampled candidate set.
+The winning checkpoint also receives an exact full-catalog Recall@100 check on a deterministic
+1,000-event validation subset; this makes the sampled-metric tradeoff explicit without making
+every epoch prohibitively slow on local hardware. Ranking cross-fitting uses three chronological
+folds and computes the 5-core separately within each earlier fold.
 
 ## Operational assumptions
 

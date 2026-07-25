@@ -10,6 +10,12 @@ from rekindle.baselines.item_cf import ItemItemCosine
 from rekindle.baselines.popularity import TimeDecayedPopularity
 from rekindle.config import load_config
 from rekindle.data.prepare import prepare_dataset
+from rekindle.retrieval.sequences import (
+    SequenceExamples,
+    build_sequence_examples,
+    load_sequence_events,
+)
+from rekindle.retrieval.training import train_retriever as train_retriever_model
 
 app = typer.Typer(no_args_is_help=True, help="Rekindle's reproducible recommendation pipeline.")
 console = Console()
@@ -62,10 +68,54 @@ def fit_baselines(
     )
 
 
+@app.command("build-sequences")
+def build_sequences(
+    config: Path = CONFIG_OPTION,
+) -> None:
+    """Build strict chronological next-item examples for retrieval training and validation."""
+    settings = _load(config)
+    project_root = _project_root()
+    interactions_path = project_root / settings["data"]["prepared_interactions_path"]
+    if not interactions_path.exists():
+        raise typer.BadParameter("Run prepare-data before building retrieval sequences.")
+
+    sequence_directory = project_root / "artifacts/sequences"
+    for split in ("train", "validation"):
+        examples = build_sequence_examples(
+            load_sequence_events(interactions_path, target_split=split),
+            target_split=split,
+            history_size=settings["split"]["replay_history_size"],
+            min_prior_interactions=settings["split"]["min_prior_interactions"],
+        )
+        examples.save(sequence_directory / split)
+        console.print(f"[green]Built {split} examples:[/green] {examples.count:,}")
+
+
 @app.command("train-retriever")
-def train_retriever() -> None:
-    """Train the two-tower retrieval model (implemented in milestone two)."""
-    raise typer.Exit("The retrieval model is not implemented yet. Complete prepare-data first.")
+def train_retriever(
+    config: Path = CONFIG_OPTION,
+) -> None:
+    """Train the two-tower retriever with early stopping on validation Recall@100."""
+    settings = _load(config)
+    sequence_directory = _project_root() / "artifacts/sequences"
+    train_directory = sequence_directory / "train"
+    validation_directory = sequence_directory / "validation"
+    if not train_directory.exists() or not validation_directory.exists():
+        raise typer.BadParameter("Run build-sequences before training the retriever.")
+    result = train_retriever_model(
+        SequenceExamples.load(train_directory),
+        SequenceExamples.load(validation_directory),
+        settings["retrieval"],
+        seed=settings["project"]["seed"],
+        output_directory=_project_root() / "artifacts/retriever",
+    )
+    console.print(
+        "[green]Trained retriever.[/green] "
+        f"Best epoch: {result.best_epoch}; sampled validation Recall@100: "
+        f"{result.validation_sampled_recall_at_100:.4f}; exact-catalog validation "
+        f"Recall@100 (1,000-event subset): {result.validation_full_catalog_recall_at_100:.4f}; "
+        f"device: {result.device}."
+    )
 
 
 @app.command("generate-ranker-data")

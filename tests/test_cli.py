@@ -9,4 +9,5 @@ def test_cli_exposes_pipeline_commands() -> None:
     assert result.exit_code == 0
     assert "prepare-data" in result.output
     assert "fit-baselines" in result.output
+    assert "build-sequences" in result.output
     assert "train-retriever" in result.output

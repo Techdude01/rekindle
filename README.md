@@ -52,6 +52,7 @@ Raw data belongs in `data/raw/` and is intentionally ignored by Git. See
 ```bash
 uv run rekindle prepare-data --config config/base.yaml
 uv run rekindle fit-baselines --config config/base.yaml
+uv run rekindle build-sequences --config config/base.yaml
 uv run rekindle train-retriever --config config/base.yaml
 uv run rekindle generate-ranker-data --config config/base.yaml
 uv run rekindle train-ranker --config config/base.yaml
