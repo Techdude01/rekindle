@@ -1,0 +1,53 @@
+[project]
+name = "rekindle"
+version = "0.1.0"
+description = "Time-aware two-stage product discovery for Amazon Electronics."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "duckdb>=1.2.0",
+  "numpy>=2.0.0",
+  "polars>=1.22.0",
+  "pyarrow>=19.0.0",
+  "pytz>=2025.1",
+  "pyyaml>=6.0.2",
+  "rich>=13.9.0",
+  "typer>=0.15.0",
+]
+
+[project.optional-dependencies]
+model = [
+  "faiss-cpu>=1.10.0",
+  "lightgbm>=4.6.0",
+  "torch>=2.6.0",
+]
+tracking = ["mlflow>=2.20.0"]
+dev = [
+  "pytest>=8.3.0",
+  "ruff>=0.9.0",
+]
+
+[project.scripts]
+rekindle = "rekindle.cli:app"
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rekindle"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

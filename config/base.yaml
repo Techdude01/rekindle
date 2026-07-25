@@ -1,0 +1,37 @@
+project:
+  name: rekindle
+  seed: 42
+
+data:
+  source_name: amazon-reviews-2023-electronics
+  recent_window_months: 36
+  min_train_interactions: 5
+  deduplicate_user_item: true
+  raw_reviews_path: data/raw/Electronics.jsonl.gz
+  raw_metadata_path: data/raw/meta_Electronics.jsonl.gz
+  prepared_interactions_path: data/processed/interactions.parquet
+  prepared_items_path: data/processed/items.parquet
+
+split:
+  validation_fraction: 0.10
+  test_fraction: 0.10
+  replay_history_size: 20
+
+retrieval:
+  embedding_dim: 128
+  batch_size: 512
+  epochs: 12
+  learning_rate: 0.001
+  sampled_negatives_per_positive: 4
+  candidate_count: 200
+  primary_recall_k: 100
+  hnsw_m: 32
+  hnsw_ef_search: 128
+
+ranking:
+  output_count: 10
+  objective: lambdarank
+
+tracking:
+  uri: file:./mlruns
+  experiment_name: rekindle

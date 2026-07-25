@@ -1,0 +1,25 @@
+# Local planning
+.planning/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+.venv/
+
+# Local data and generated artifacts
+data/raw/
+data/interim/
+data/processed/
+artifacts/
+mlruns/
+mlartifacts/
+reports/generated/
+
+# Editor and operating system files
+.DS_Store
+.idea/
+.vscode/
