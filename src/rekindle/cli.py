@@ -1,5 +1,6 @@
 """Command-line entry points for reproducible pipeline stages."""
 
+import json
 from pathlib import Path
 
 import typer
@@ -10,6 +11,8 @@ from rekindle.baselines.item_cf import ItemItemCosine
 from rekindle.baselines.popularity import TimeDecayedPopularity
 from rekindle.config import load_config
 from rekindle.data.prepare import prepare_dataset
+from rekindle.evaluation.baselines import item_cf_recall_at_k, popularity_recall_at_k
+from rekindle.evaluation.metrics import fixed_subset_indices
 from rekindle.retrieval.sequences import (
     SequenceExamples,
     build_sequence_examples,
@@ -118,6 +121,67 @@ def train_retriever(
         f"sampled diagnostic Recall@100: {result.validation_sampled_recall_at_100:.4f}; "
         f"device: {result.device}."
     )
+
+
+@app.command("evaluate-baselines")
+def evaluate_baselines(
+    config: Path = CONFIG_OPTION,
+) -> None:
+    """Compare training-only baselines on the retriever's fixed exact validation subset."""
+    settings = _load(config)
+    project_root = _project_root()
+    validation_directory = project_root / "artifacts/sequences/validation"
+    baseline_directory = project_root / "artifacts/baselines"
+    if not validation_directory.exists() or not baseline_directory.exists():
+        raise typer.BadParameter("Run build-sequences and fit-baselines before evaluation.")
+
+    examples = SequenceExamples.load(validation_directory)
+    selection_indices = fixed_subset_indices(
+        examples.count,
+        settings["retrieval"]["full_catalog_evaluation_examples"],
+        seed=settings["project"]["seed"] + 2,
+    )
+    recall_k = settings["retrieval"]["primary_recall_k"]
+    results: list[dict[str, str | float | int]] = []
+    for half_life_days in settings["baselines"]["popularity_half_lives_days"]:
+        model = TimeDecayedPopularity.load(
+            baseline_directory / f"popularity-{half_life_days}d.json"
+        )
+        name = f"popularity_{half_life_days}d"
+        console.print(f"[cyan]Evaluating {name}...[/cyan]")
+        recall = popularity_recall_at_k(
+            model,
+            examples,
+            selection_indices,
+            k=recall_k,
+            progress_callback=console.print,
+        )
+        results.append(
+            {"name": name, "recall_at_100": recall, "evaluated_examples": len(selection_indices)}
+        )
+
+    console.print("[cyan]Evaluating item_item_cosine...[/cyan]")
+    item_cf = ItemItemCosine.load(baseline_directory / "item-cosine")
+    item_cf_recall = item_cf_recall_at_k(
+        item_cf,
+        examples,
+        selection_indices,
+        k=recall_k,
+        progress_callback=console.print,
+    )
+    results.append(
+        {
+            "name": "item_item_cosine",
+            "recall_at_100": item_cf_recall,
+            "evaluated_examples": len(selection_indices),
+        }
+    )
+    output_path = project_root / "artifacts/evaluation/validation-baselines.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    console.print("[green]Baseline Recall@100 results:[/green]")
+    for result in results:
+        console.print(f"  {result['name']}: {result['recall_at_100']:.4f}")
 
 
 @app.command("generate-ranker-data")

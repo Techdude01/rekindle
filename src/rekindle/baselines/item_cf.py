@@ -122,3 +122,18 @@ class ItemItemCosine:
             + "\n",
             encoding="utf-8",
         )
+
+    @classmethod
+    def load(cls, directory: Path) -> ItemItemCosine:
+        """Load a persisted training-only sparse item-item model."""
+        payload = json.loads((directory / "items.json").read_text(encoding="utf-8"))
+        item_ids = payload["item_ids"]
+        interactions = sparse.load_npz(directory / "interactions.npz").tocsr()
+        item_norms = np.sqrt(np.asarray(interactions.power(2).sum(axis=0)).ravel())
+        return cls(
+            interactions=interactions,
+            item_ids=item_ids,
+            item_to_index={item_id: index for index, item_id in enumerate(item_ids)},
+            item_norms=item_norms,
+            recency_decay=float(payload["recency_decay"]),
+        )

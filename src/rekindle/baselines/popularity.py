@@ -58,3 +58,13 @@ class TimeDecayedPopularity:
             "scores": self.scores,
         }
         path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: Path) -> TimeDecayedPopularity:
+        """Load a persisted training-only popularity model."""
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return cls(
+            half_life_days=float(payload["half_life_days"]),
+            reference_time=datetime.fromisoformat(payload["reference_time"]),
+            scores={item_id: float(score) for item_id, score in payload["scores"].items()},
+        )

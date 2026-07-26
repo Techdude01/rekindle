@@ -14,6 +14,7 @@ import torch
 from torch.nn import functional as functional
 from torch.utils.data import DataLoader, TensorDataset
 
+from rekindle.evaluation.metrics import fixed_subset_indices
 from rekindle.retrieval.model import TwoTowerRetriever, select_device
 from rekindle.retrieval.sequences import SequenceExamples
 
@@ -191,7 +192,7 @@ def train_retriever(
         item_count=len(train_examples.item_ids),
         seed=seed,
     )
-    selection_indices = _validation_subset_indices(
+    selection_indices = fixed_subset_indices(
         validation_examples.count,
         retrieval_config["full_catalog_evaluation_examples"],
         seed=seed + 2,
@@ -365,16 +366,6 @@ def train_retriever(
         encoding="utf-8",
     )
     return result
-
-
-def _validation_subset_indices(count: int, maximum: int, seed: int) -> np.ndarray:
-    """Choose a fixed validation subset for a tractable exact-catalog check."""
-    if maximum < 1:
-        raise ValueError("full_catalog_evaluation_examples must be positive")
-    if count <= maximum:
-        return np.arange(count, dtype=np.int64)
-    random = np.random.default_rng(seed)
-    return np.sort(random.choice(count, size=maximum, replace=False))
 
 
 @torch.no_grad()

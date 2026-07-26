@@ -11,3 +11,4 @@ def test_cli_exposes_pipeline_commands() -> None:
     assert "fit-baselines" in result.output
     assert "build-sequences" in result.output
     assert "train-retriever" in result.output
+    assert "evaluate-baselines" in result.output
