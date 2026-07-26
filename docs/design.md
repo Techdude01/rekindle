@@ -52,6 +52,10 @@ local hardware. The 999-negative sampled Recall@100 is calculated once for the w
 as a diagnostic, not a model-selection criterion. Ranking cross-fitting uses three chronological
 folds and computes the 5-core separately within each earlier fold.
 
+The first neural ablation removes learned user-ID embeddings while retaining the same
+recency-weighted item history, objective, and evaluation slice. This tests whether sparse
+per-user histories make a durable user representation less reliable than shared sequence signal.
+
 ## Operational assumptions
 
 The reference environment is an 18 GB Apple Silicon Mac. DuckDB performs disk-backed

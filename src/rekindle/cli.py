@@ -97,6 +97,16 @@ def build_sequences(
 @app.command("train-retriever")
 def train_retriever(
     config: Path = CONFIG_OPTION,
+    history_only: bool = typer.Option(
+        False,
+        "--history-only",
+        help="Ablate sparse user-ID embeddings; encode only the prior item history.",
+    ),
+    output_name: str = typer.Option(
+        "retriever",
+        "--output-name",
+        help="Ignored-artifact directory name under artifacts/.",
+    ),
 ) -> None:
     """Train the two-tower retriever with early stopping on validation Recall@100."""
     settings = _load(config)
@@ -105,21 +115,24 @@ def train_retriever(
     validation_directory = sequence_directory / "validation"
     if not train_directory.exists() or not validation_directory.exists():
         raise typer.BadParameter("Run build-sequences before training the retriever.")
+    if Path(output_name).name != output_name:
+        raise typer.BadParameter("output-name must be a single directory name.")
     console.print("[cyan]Loading training and validation sequence artifacts...[/cyan]")
     result = train_retriever_model(
         SequenceExamples.load(train_directory),
         SequenceExamples.load(validation_directory),
         settings["retrieval"],
         seed=settings["project"]["seed"],
-        output_directory=_project_root() / "artifacts/retriever",
+        output_directory=_project_root() / "artifacts" / output_name,
         progress_callback=console.print,
+        use_user_embedding=not history_only,
     )
     console.print(
         "[green]Trained retriever.[/green] "
         f"Best epoch: {result.best_epoch}; exact-catalog validation Recall@100 "
         f"(1,000-event selection subset): {result.validation_full_catalog_recall_at_100:.4f}; "
         f"sampled diagnostic Recall@100: {result.validation_sampled_recall_at_100:.4f}; "
-        f"device: {result.device}."
+        f"variant: {result.model_variant}; device: {result.device}."
     )
 
 

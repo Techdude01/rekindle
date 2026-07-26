@@ -16,22 +16,28 @@ class TwoTowerRetriever(nn.Module):
         item_count: int,
         embedding_dim: int,
         history_recency_decay: float,
+        use_user_embedding: bool = True,
     ) -> None:
         super().__init__()
         if not 0 < history_recency_decay <= 1:
             raise ValueError("history_recency_decay must be in (0, 1]")
         self.history_recency_decay = history_recency_decay
-        self.user_embeddings = nn.Embedding(user_count, embedding_dim)
+        self.use_user_embedding = use_user_embedding
+        self.user_embeddings = (
+            nn.Embedding(user_count, embedding_dim) if use_user_embedding else None
+        )
         self.history_item_embeddings = nn.Embedding(item_count, embedding_dim)
         self.target_item_embeddings = nn.Embedding(item_count, embedding_dim)
-        self.user_projection = nn.Linear(embedding_dim * 2, embedding_dim)
+        projection_input_dim = embedding_dim * 2 if use_user_embedding else embedding_dim
+        self.user_projection = nn.Linear(projection_input_dim, embedding_dim)
         self.user_normalization = nn.LayerNorm(embedding_dim)
         self.item_normalization = nn.LayerNorm(embedding_dim)
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
         """Use stable embedding initialization for dot-product contrastive training."""
-        nn.init.normal_(self.user_embeddings.weight, std=0.02)
+        if self.user_embeddings is not None:
+            nn.init.normal_(self.user_embeddings.weight, std=0.02)
         nn.init.normal_(self.history_item_embeddings.weight, std=0.02)
         nn.init.normal_(self.target_item_embeddings.weight, std=0.02)
         nn.init.xavier_uniform_(self.user_projection.weight)
@@ -48,8 +54,12 @@ class TwoTowerRetriever(nn.Module):
         pooled_history = (embedded_history * weights).sum(dim=1)
         pooled_history = pooled_history / weights.sum(dim=1).clamp_min(1e-8)
 
-        stable_preferences = self.user_embeddings(user_indices)
-        query = self.user_projection(torch.cat((stable_preferences, pooled_history), dim=-1))
+        query_input = (
+            torch.cat((self.user_embeddings(user_indices), pooled_history), dim=-1)
+            if self.user_embeddings is not None
+            else pooled_history
+        )
+        query = self.user_projection(query_input)
         query = self.user_normalization(query)
         return functional.normalize(query, dim=-1)
 

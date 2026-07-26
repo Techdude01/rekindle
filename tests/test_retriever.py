@@ -30,6 +30,24 @@ def test_two_tower_encodes_padded_histories_to_unit_vectors() -> None:
     assert torch.allclose(item_vectors.norm(dim=1), torch.ones(3), atol=1e-5)
 
 
+def test_history_only_tower_encodes_padded_histories_to_unit_vectors() -> None:
+    model = TwoTowerRetriever(
+        user_count=3,
+        item_count=5,
+        embedding_dim=8,
+        history_recency_decay=0.8,
+        use_user_embedding=False,
+    )
+
+    user_vectors = model.encode_users(
+        torch.tensor([0, 1]),
+        torch.tensor([[-1, -1, 1, 2], [-1, 0, 1, 3]]),
+    )
+
+    assert user_vectors.shape == (2, 8)
+    assert torch.allclose(user_vectors.norm(dim=1), torch.ones(2), atol=1e-5)
+
+
 def test_negative_sampler_excludes_prior_and_target_items() -> None:
     sampler = NegativeSampler([[0, 1, 2]], item_count=5, seed=42)
 
@@ -98,6 +116,7 @@ def test_retriever_training_writes_a_checkpoint_and_metrics(tmp_path) -> None:
     )
 
     assert result.best_epoch == 1
+    assert result.model_variant == "user_id_plus_history"
     assert 0.0 <= result.validation_sampled_recall_at_100 <= 1.0
     assert 0.0 <= result.validation_full_catalog_recall_at_100 <= 1.0
     assert (tmp_path / "model.pt").exists()

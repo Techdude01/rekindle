@@ -35,6 +35,7 @@ class TrainingResult:
     validation_sampled_recall_at_100: float
     validation_full_catalog_recall_at_100: float
     device: str
+    model_variant: str
 
 
 class NegativeSampler:
@@ -139,6 +140,7 @@ def train_retriever(
     seed: int,
     output_directory: Path,
     progress_callback: ProgressCallback | None = None,
+    use_user_embedding: bool = True,
 ) -> TrainingResult:
     """Train a two-tower model and early-stop on sampled validation Recall@100."""
     if train_examples.item_ids != validation_examples.item_ids:
@@ -163,11 +165,14 @@ def train_retriever(
         f"{validation_examples.count:,} validation examples; "
         f"{len(train_examples.item_ids):,} warm-catalog products.",
     )
+    variant = "user_id_plus_history" if use_user_embedding else "history_only"
+    _report(progress_callback, f"Model variant: {variant}.")
     model = TwoTowerRetriever(
         user_count=len(train_examples.user_ids),
         item_count=len(train_examples.item_ids),
         embedding_dim=retrieval_config["embedding_dim"],
         history_recency_decay=retrieval_config["history_recency_decay"],
+        use_user_embedding=use_user_embedding,
     ).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -348,6 +353,7 @@ def train_retriever(
             "item_count": len(train_examples.item_ids),
             "embedding_dim": retrieval_config["embedding_dim"],
             "history_recency_decay": retrieval_config["history_recency_decay"],
+            "use_user_embedding": use_user_embedding,
         },
         output_directory / "model.pt",
     )
@@ -356,6 +362,7 @@ def train_retriever(
         validation_sampled_recall_at_100=validation_sampled_recall,
         validation_full_catalog_recall_at_100=best_recall,
         device=str(device),
+        model_variant=variant,
     )
     (output_directory / "training-result.json").write_text(
         json.dumps(result.__dict__, indent=2, sort_keys=True) + "\n",
