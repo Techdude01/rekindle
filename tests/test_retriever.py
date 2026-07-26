@@ -102,5 +102,6 @@ def test_retriever_training_writes_a_checkpoint_and_metrics(tmp_path) -> None:
     assert 0.0 <= result.validation_full_catalog_recall_at_100 <= 1.0
     assert (tmp_path / "model.pt").exists()
     assert (tmp_path / "training-result.json").exists()
+    assert (tmp_path / "training-history.json").exists()
     assert any(message.startswith("Device:") for message in progress)
     assert any(message.startswith("Epoch 1:") for message in progress)

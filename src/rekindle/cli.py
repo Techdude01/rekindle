@@ -113,9 +113,9 @@ def train_retriever(
     )
     console.print(
         "[green]Trained retriever.[/green] "
-        f"Best epoch: {result.best_epoch}; sampled validation Recall@100: "
-        f"{result.validation_sampled_recall_at_100:.4f}; exact-catalog validation "
-        f"Recall@100 (1,000-event subset): {result.validation_full_catalog_recall_at_100:.4f}; "
+        f"Best epoch: {result.best_epoch}; exact-catalog validation Recall@100 "
+        f"(1,000-event selection subset): {result.validation_full_catalog_recall_at_100:.4f}; "
+        f"sampled diagnostic Recall@100: {result.validation_sampled_recall_at_100:.4f}; "
         f"device: {result.device}."
     )
 

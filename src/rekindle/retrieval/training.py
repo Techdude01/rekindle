@@ -191,6 +191,11 @@ def train_retriever(
         item_count=len(train_examples.item_ids),
         seed=seed,
     )
+    selection_indices = _validation_subset_indices(
+        validation_examples.count,
+        retrieval_config["full_catalog_evaluation_examples"],
+        seed=seed + 2,
+    )
     _report(
         progress_callback,
         "Plan: "
@@ -202,6 +207,7 @@ def train_retriever(
     best_epoch = 0
     best_state: dict[str, torch.Tensor] | None = None
     epochs_without_improvement = 0
+    training_history: list[dict[str, float | int]] = []
     for epoch in range(1, retrieval_config["max_epochs"] + 1):
         epoch_started_at = time.perf_counter()
         running_loss = 0.0
@@ -258,22 +264,31 @@ def train_retriever(
                     f"{time.perf_counter() - epoch_started_at:.0f}s elapsed",
                 )
 
-        _report(progress_callback, f"Epoch {epoch}: scoring sampled validation Recall@100...")
+        _report(
+            progress_callback,
+            f"Epoch {epoch}: scoring exact full-catalog Recall@100 on the fixed "
+            f"{len(selection_indices):,}-event selection subset...",
+        )
         validation_started_at = time.perf_counter()
-        recall = sampled_recall_at_k(
+        recall = recall_at_k(
             model,
             validation_examples,
             k=retrieval_config["primary_recall_k"],
             batch_size=retrieval_config["evaluation_batch_size"],
             device=device,
-            negative_count=retrieval_config["evaluation_sampled_negatives"],
-            seed=seed + 1,
-            progress_callback=progress_callback,
-            progress_prefix=f"Epoch {epoch} validation",
-            progress_every_batches=retrieval_config.get("progress_every_batches", 50),
+            example_indices=selection_indices,
         )
         epoch_elapsed = time.perf_counter() - epoch_started_at
         validation_elapsed = time.perf_counter() - validation_started_at
+        training_history.append(
+            {
+                "epoch": epoch,
+                "mean_training_loss": running_loss / len(loader),
+                "validation_full_catalog_recall_at_100": recall,
+                "epoch_elapsed_seconds": epoch_elapsed,
+                "validation_elapsed_seconds": validation_elapsed,
+            }
+        )
         if recall > best_recall:
             best_recall = recall
             best_epoch = epoch
@@ -283,14 +298,14 @@ def train_retriever(
             epochs_without_improvement = 0
             _report(
                 progress_callback,
-                f"Epoch {epoch}: sampled Recall@100 {recall:.4f}; new best checkpoint "
+                f"Epoch {epoch}: exact Recall@100 {recall:.4f}; new best checkpoint "
                 f"({epoch_elapsed:.0f}s total, {validation_elapsed:.0f}s validation).",
             )
         else:
             epochs_without_improvement += 1
             _report(
                 progress_callback,
-                f"Epoch {epoch}: sampled Recall@100 {recall:.4f}; best {best_recall:.4f} at "
+                f"Epoch {epoch}: exact Recall@100 {recall:.4f}; best {best_recall:.4f} at "
                 f"epoch {best_epoch}; no-improvement {epochs_without_improvement}/"
                 f"{retrieval_config['early_stopping_patience']}.",
             )
@@ -305,23 +320,24 @@ def train_retriever(
     model.load_state_dict(best_state)
     _report(
         progress_callback,
-        "Running exact full-catalog Recall@100 on the fixed 1,000-event validation subset...",
+        "Scoring all validation events against the fixed 999-negative sampled diagnostic set...",
     )
-    validation_full_catalog_recall = recall_at_k(
+    validation_sampled_recall = sampled_recall_at_k(
         model,
         validation_examples,
         k=retrieval_config["primary_recall_k"],
         batch_size=retrieval_config["evaluation_batch_size"],
         device=device,
-        example_indices=_validation_subset_indices(
-            validation_examples.count,
-            retrieval_config["full_catalog_evaluation_examples"],
-            seed=seed + 2,
-        ),
+        negative_count=retrieval_config["evaluation_sampled_negatives"],
+        seed=seed + 1,
+        progress_callback=progress_callback,
+        progress_prefix="Final sampled validation",
+        progress_every_batches=retrieval_config.get("progress_every_batches", 50),
     )
     _report(
         progress_callback,
-        f"Exact full-catalog Recall@100: {validation_full_catalog_recall:.4f}.",
+        f"Final sampled Recall@100: {validation_sampled_recall:.4f}; "
+        f"selected exact Recall@100: {best_recall:.4f}.",
     )
     output_directory.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -336,12 +352,16 @@ def train_retriever(
     )
     result = TrainingResult(
         best_epoch=best_epoch,
-        validation_sampled_recall_at_100=best_recall,
-        validation_full_catalog_recall_at_100=validation_full_catalog_recall,
+        validation_sampled_recall_at_100=validation_sampled_recall,
+        validation_full_catalog_recall_at_100=best_recall,
         device=str(device),
     )
     (output_directory / "training-result.json").write_text(
         json.dumps(result.__dict__, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (output_directory / "training-history.json").write_text(
+        json.dumps(training_history, indent=2) + "\n",
         encoding="utf-8",
     )
     return result
