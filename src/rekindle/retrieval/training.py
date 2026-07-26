@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,14 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from rekindle.retrieval.model import TwoTowerRetriever, select_device
 from rekindle.retrieval.sequences import SequenceExamples
+
+ProgressCallback = Callable[[str], None]
+
+
+def _report(callback: ProgressCallback | None, message: str) -> None:
+    """Emit a concise training update when a caller wants live progress."""
+    if callback is not None:
+        callback(message)
 
 
 @dataclass(frozen=True)
@@ -127,6 +137,7 @@ def train_retriever(
     retrieval_config: dict[str, Any],
     seed: int,
     output_directory: Path,
+    progress_callback: ProgressCallback | None = None,
 ) -> TrainingResult:
     """Train a two-tower model and early-stop on sampled validation Recall@100."""
     if train_examples.item_ids != validation_examples.item_ids:
@@ -138,6 +149,19 @@ def train_retriever(
 
     torch.manual_seed(seed)
     device = select_device()
+    accelerator_note = (
+        "Apple Metal acceleration enabled."
+        if device.type == "mps"
+        else "CPU fallback in use; MPS was not available to this Python process."
+    )
+    _report(progress_callback, f"Device: {device.type}. {accelerator_note}")
+    _report(
+        progress_callback,
+        "Data: "
+        f"{train_examples.count:,} training examples; "
+        f"{validation_examples.count:,} validation examples; "
+        f"{len(train_examples.item_ids):,} warm-catalog products.",
+    )
     model = TwoTowerRetriever(
         user_count=len(train_examples.user_ids),
         item_count=len(train_examples.item_ids),
@@ -167,14 +191,25 @@ def train_retriever(
         item_count=len(train_examples.item_ids),
         seed=seed,
     )
+    _report(
+        progress_callback,
+        "Plan: "
+        f"up to {retrieval_config['max_epochs']} epochs, {len(loader):,} batches/epoch, "
+        f"early-stop patience {retrieval_config['early_stopping_patience']}.",
+    )
 
     best_recall = -1.0
     best_epoch = 0
     best_state: dict[str, torch.Tensor] | None = None
     epochs_without_improvement = 0
     for epoch in range(1, retrieval_config["max_epochs"] + 1):
+        epoch_started_at = time.perf_counter()
+        running_loss = 0.0
         model.train()
-        for user_indices, histories, targets, prior_event_counts in loader:
+        for batch_number, (user_indices, histories, targets, prior_event_counts) in enumerate(
+            loader,
+            start=1,
+        ):
             batch_user_indices = user_indices.numpy()
             batch_prior_event_counts = prior_event_counts.numpy()
             batch_targets = targets.numpy()
@@ -211,7 +246,20 @@ def train_retriever(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            running_loss += float(loss.item())
+            progress_every = retrieval_config.get("progress_every_batches", 50)
+            if batch_number % progress_every == 0 or batch_number == len(loader):
+                _report(
+                    progress_callback,
+                    f"Epoch {epoch}/{retrieval_config['max_epochs']} | "
+                    f"batch {batch_number:,}/{len(loader):,} "
+                    f"({batch_number / len(loader):.0%}) | "
+                    f"mean loss {running_loss / batch_number:.4f} | "
+                    f"{time.perf_counter() - epoch_started_at:.0f}s elapsed",
+                )
 
+        _report(progress_callback, f"Epoch {epoch}: scoring sampled validation Recall@100...")
+        validation_started_at = time.perf_counter()
         recall = sampled_recall_at_k(
             model,
             validation_examples,
@@ -220,7 +268,12 @@ def train_retriever(
             device=device,
             negative_count=retrieval_config["evaluation_sampled_negatives"],
             seed=seed + 1,
+            progress_callback=progress_callback,
+            progress_prefix=f"Epoch {epoch} validation",
+            progress_every_batches=retrieval_config.get("progress_every_batches", 50),
         )
+        epoch_elapsed = time.perf_counter() - epoch_started_at
+        validation_elapsed = time.perf_counter() - validation_started_at
         if recall > best_recall:
             best_recall = recall
             best_epoch = epoch
@@ -228,14 +281,32 @@ def train_retriever(
                 name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()
             }
             epochs_without_improvement = 0
+            _report(
+                progress_callback,
+                f"Epoch {epoch}: sampled Recall@100 {recall:.4f}; new best checkpoint "
+                f"({epoch_elapsed:.0f}s total, {validation_elapsed:.0f}s validation).",
+            )
         else:
             epochs_without_improvement += 1
+            _report(
+                progress_callback,
+                f"Epoch {epoch}: sampled Recall@100 {recall:.4f}; best {best_recall:.4f} at "
+                f"epoch {best_epoch}; no-improvement {epochs_without_improvement}/"
+                f"{retrieval_config['early_stopping_patience']}.",
+            )
             if epochs_without_improvement >= retrieval_config["early_stopping_patience"]:
+                _report(
+                    progress_callback, "Early stopping triggered; restoring the best checkpoint."
+                )
                 break
 
     if best_state is None:
         raise RuntimeError("Retriever training did not produce a model state")
     model.load_state_dict(best_state)
+    _report(
+        progress_callback,
+        "Running exact full-catalog Recall@100 on the fixed 1,000-event validation subset...",
+    )
     validation_full_catalog_recall = recall_at_k(
         model,
         validation_examples,
@@ -247,6 +318,10 @@ def train_retriever(
             retrieval_config["full_catalog_evaluation_examples"],
             seed=seed + 2,
         ),
+    )
+    _report(
+        progress_callback,
+        f"Exact full-catalog Recall@100: {validation_full_catalog_recall:.4f}.",
     )
     output_directory.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -291,6 +366,9 @@ def sampled_recall_at_k(
     device: torch.device,
     negative_count: int,
     seed: int,
+    progress_callback: ProgressCallback | None = None,
+    progress_prefix: str = "Validation",
+    progress_every_batches: int = 50,
 ) -> float:
     """Score targets against a fixed, seen-item-filtered sampled candidate set."""
     if examples.count == 0:
@@ -300,7 +378,8 @@ def sampled_recall_at_k(
     model.eval()
     sampler = NegativeSampler(examples.user_item_sequences, len(examples.item_ids), seed)
     hits = 0
-    for start in range(0, examples.count, batch_size):
+    validation_batches = (examples.count + batch_size - 1) // batch_size
+    for batch_number, start in enumerate(range(0, examples.count, batch_size), start=1):
         stop = min(start + batch_size, examples.count)
         targets = examples.targets[start:stop]
         negatives = sampler.sample(
@@ -326,6 +405,12 @@ def sampled_recall_at_k(
         )
         top_columns = torch.topk(scores, k=k, dim=1).indices.cpu().numpy()
         hits += int(np.sum(np.any(top_columns == 0, axis=1)))
+        if batch_number % progress_every_batches == 0 or batch_number == validation_batches:
+            _report(
+                progress_callback,
+                f"{progress_prefix} | batch {batch_number:,}/{validation_batches:,} "
+                f"({batch_number / validation_batches:.0%}).",
+            )
     return hits / examples.count
 
 

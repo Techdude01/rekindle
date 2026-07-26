@@ -87,10 +87,20 @@ def test_retriever_training_writes_a_checkpoint_and_metrics(tmp_path) -> None:
         "primary_recall_k": 2,
     }
 
-    result = train_retriever(examples, examples, config, seed=42, output_directory=tmp_path)
+    progress: list[str] = []
+    result = train_retriever(
+        examples,
+        examples,
+        config,
+        seed=42,
+        output_directory=tmp_path,
+        progress_callback=progress.append,
+    )
 
     assert result.best_epoch == 1
     assert 0.0 <= result.validation_sampled_recall_at_100 <= 1.0
     assert 0.0 <= result.validation_full_catalog_recall_at_100 <= 1.0
     assert (tmp_path / "model.pt").exists()
     assert (tmp_path / "training-result.json").exists()
+    assert any(message.startswith("Device:") for message in progress)
+    assert any(message.startswith("Epoch 1:") for message in progress)

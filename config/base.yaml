@@ -30,6 +30,7 @@ retrieval:
   evaluation_batch_size: 128
   evaluation_sampled_negatives: 999
   full_catalog_evaluation_examples: 1000
+  progress_every_batches: 50
   sampled_negatives_per_positive: 4
   candidate_count: 200
   primary_recall_k: 100

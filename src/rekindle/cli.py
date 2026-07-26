@@ -102,12 +102,14 @@ def train_retriever(
     validation_directory = sequence_directory / "validation"
     if not train_directory.exists() or not validation_directory.exists():
         raise typer.BadParameter("Run build-sequences before training the retriever.")
+    console.print("[cyan]Loading training and validation sequence artifacts...[/cyan]")
     result = train_retriever_model(
         SequenceExamples.load(train_directory),
         SequenceExamples.load(validation_directory),
         settings["retrieval"],
         seed=settings["project"]["seed"],
         output_directory=_project_root() / "artifacts/retriever",
+        progress_callback=console.print,
     )
     console.print(
         "[green]Trained retriever.[/green] "
