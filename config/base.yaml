@@ -55,6 +55,10 @@ baselines:
   item_cf_history_size: 20
   item_cf_recency_decay: 0.8
 
+evaluation:
+  bootstrap_resamples: 2000
+  bootstrap_confidence_level: 0.95
+
 tracking:
   uri: file:./mlruns
   experiment_name: rekindle

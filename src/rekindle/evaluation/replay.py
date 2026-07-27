@@ -15,6 +15,7 @@ import polars as pl
 from rekindle.baselines.item_cf import ItemItemCosine
 from rekindle.baselines.popularity import TimeDecayedPopularity
 from rekindle.evaluation.baselines import _first_unseen
+from rekindle.evaluation.bootstrap import bootstrap_mean_confidence_intervals
 from rekindle.ranking.crossfit import _affinity, _inverse_rank, _merge_source_ranks
 from rekindle.retrieval.inference import load_retriever, retrieve_top_k
 from rekindle.retrieval.model import select_device
@@ -44,6 +45,12 @@ class ReplayMetrics:
     item_cf_ndcg_at_10: float
     end_to_end_hit_rate_at_10: float
     end_to_end_ndcg_at_10: float
+    end_to_end_ndcg_at_10_ci95_low: float
+    end_to_end_ndcg_at_10_ci95_high: float
+    end_to_end_ndcg_minus_popularity_ci95_low: float
+    end_to_end_ndcg_minus_popularity_ci95_high: float
+    end_to_end_ndcg_minus_item_cf_ci95_low: float
+    end_to_end_ndcg_minus_item_cf_ci95_high: float
     average_unique_candidates: float
 
     def to_dict(self) -> dict[str, float | int]:
@@ -85,7 +92,10 @@ def run_test_replay(
         ranker,
         item_metadata,
         candidate_count,
-        progress_callback,
+        bootstrap_resamples=config["evaluation"]["bootstrap_resamples"],
+        confidence_level=config["evaluation"]["bootstrap_confidence_level"],
+        seed=config["project"]["seed"] + 4,
+        progress_callback=progress_callback,
     )
     output_path = project_root / "artifacts/evaluation/test-replay.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,6 +124,9 @@ def _score_examples(
     ranker: lgb.Booster,
     metadata: dict[str, tuple[str, str]],
     candidate_count: int,
+    bootstrap_resamples: int,
+    confidence_level: float,
+    seed: int,
     progress_callback: ProgressCallback | None,
 ) -> ReplayMetrics:
     """Compute source recall plus ranker NDCG with zeros for naturally missed targets."""
@@ -133,6 +146,9 @@ def _score_examples(
     neural_hits_at_10 = neural_ndcg_total = 0.0
     popularity_hits_at_10 = popularity_ndcg_total = 0.0
     item_cf_hits_at_10 = item_cf_ndcg_total = 0.0
+    ranker_ndcg_by_example = np.zeros(examples.count, dtype=np.float64)
+    popularity_ndcg_by_example = np.zeros(examples.count, dtype=np.float64)
+    item_cf_ndcg_by_example = np.zeros(examples.count, dtype=np.float64)
     candidate_counts: list[int] = []
     for example_index in range(examples.count):
         user_index = int(examples.user_indices[example_index])
@@ -159,6 +175,8 @@ def _score_examples(
         popularity_ndcg_total += popularity_ndcg
         item_cf_hits_at_10 += item_cf_hit
         item_cf_ndcg_total += item_cf_ndcg
+        popularity_ndcg_by_example[example_index] = popularity_ndcg
+        item_cf_ndcg_by_example[example_index] = item_cf_ndcg
         for cutoff in neural_hits:
             neural_hits[cutoff] += target in neural[:cutoff]
         source_ranks = _merge_source_ranks(neural, popular, collaborative)
@@ -182,13 +200,25 @@ def _score_examples(
             rank = int(np.flatnonzero(ordered_positions == target_position)[0]) + 1
             if rank <= 10:
                 ranker_hits += 1
-                ranker_ndcg_total += 1.0 / math.log2(rank + 1)
+                ranker_ndcg = 1.0 / math.log2(rank + 1)
+                ranker_ndcg_total += ranker_ndcg
+                ranker_ndcg_by_example[example_index] = ranker_ndcg
         completed = example_index + 1
         if progress_callback is not None and (completed % 100 == 0 or completed == examples.count):
             progress_callback(
                 f"Test replay | event {completed:,}/{examples.count:,} "
                 f"({completed / examples.count:.0%})."
             )
+    intervals = bootstrap_mean_confidence_intervals(
+        {
+            "end_to_end": ranker_ndcg_by_example,
+            "end_to_end_minus_popularity": ranker_ndcg_by_example - popularity_ndcg_by_example,
+            "end_to_end_minus_item_cf": ranker_ndcg_by_example - item_cf_ndcg_by_example,
+        },
+        resamples=bootstrap_resamples,
+        confidence_level=confidence_level,
+        seed=seed,
+    )
     return ReplayMetrics(
         evaluated_examples=examples.count,
         neural_recall_at_50=neural_hits[50] / examples.count,
@@ -203,6 +233,12 @@ def _score_examples(
         item_cf_ndcg_at_10=item_cf_ndcg_total / examples.count,
         end_to_end_hit_rate_at_10=ranker_hits / examples.count,
         end_to_end_ndcg_at_10=ranker_ndcg_total / examples.count,
+        end_to_end_ndcg_at_10_ci95_low=intervals["end_to_end"][0],
+        end_to_end_ndcg_at_10_ci95_high=intervals["end_to_end"][1],
+        end_to_end_ndcg_minus_popularity_ci95_low=intervals["end_to_end_minus_popularity"][0],
+        end_to_end_ndcg_minus_popularity_ci95_high=intervals["end_to_end_minus_popularity"][1],
+        end_to_end_ndcg_minus_item_cf_ci95_low=intervals["end_to_end_minus_item_cf"][0],
+        end_to_end_ndcg_minus_item_cf_ci95_high=intervals["end_to_end_minus_item_cf"][1],
         average_unique_candidates=float(np.mean(candidate_counts)),
     )
 

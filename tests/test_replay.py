@@ -9,6 +9,7 @@ from rekindle.data.replay import (
     iterative_k_core,
     split_name,
 )
+from rekindle.evaluation.bootstrap import bootstrap_mean_confidence_intervals
 from rekindle.evaluation.replay import _ranker_features, _top_k_metrics
 from rekindle.ranking.model import RANKER_FEATURES
 
@@ -78,3 +79,20 @@ def test_test_replay_builds_the_same_ranker_feature_shape_as_training() -> None:
 def test_top_k_metrics_scores_single_positive_by_its_rank() -> None:
     assert _top_k_metrics(target=5, ranking=[2, 5, 1], k=10) == (1, pytest.approx(1 / 1.5849625))
     assert _top_k_metrics(target=5, ranking=[2, 1, 5], k=2) == (0, 0.0)
+
+
+def test_paired_bootstrap_intervals_are_reproducible_and_preserve_constant_scores() -> None:
+    series = {
+        "constant": [0.25, 0.25, 0.25],
+        "paired_difference": [0.1, 0.0, -0.1],
+    }
+
+    first = bootstrap_mean_confidence_intervals(
+        series, resamples=100, confidence_level=0.95, seed=42
+    )
+    second = bootstrap_mean_confidence_intervals(
+        series, resamples=100, confidence_level=0.95, seed=42
+    )
+
+    assert first == second
+    assert first["constant"] == (0.25, 0.25)
