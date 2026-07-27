@@ -14,6 +14,7 @@ from rekindle.data.prepare import prepare_dataset
 from rekindle.evaluation.baselines import item_cf_recall_at_k, popularity_recall_at_k
 from rekindle.evaluation.candidate_union import evaluate_candidate_union
 from rekindle.evaluation.metrics import fixed_subset_indices
+from rekindle.evaluation.replay import run_test_replay
 from rekindle.ranking.crossfit import generate_cross_fitted_ranker_data
 from rekindle.ranking.model import train_ranker as train_lambda_ranker
 from rekindle.retrieval.inference import load_retriever, retrieve_top_k
@@ -315,9 +316,30 @@ def train_ranker(
 
 
 @app.command("evaluate")
-def evaluate() -> None:
-    """Run sequential replay evaluation (implemented in milestone three)."""
-    raise typer.Exit("Evaluation is not implemented yet. Complete model training first.")
+def evaluate(
+    config: Path = CONFIG_OPTION,
+) -> None:
+    """Run frozen-model sequential replay over every eligible warm test event."""
+    settings = _load(config)
+    required_paths = (
+        _project_root() / "artifacts/retriever-history-only/model.pt",
+        _project_root() / "artifacts/baselines/popularity-30d.json",
+        _project_root() / "artifacts/baselines/item-cosine/interactions.npz",
+        _project_root() / "artifacts/ranker/model.txt",
+    )
+    if any(not path.exists() for path in required_paths):
+        raise typer.BadParameter("Train the retriever, baselines, and ranker before test replay.")
+    console.print(
+        "[cyan]Replaying every eligible test event with frozen models; "
+        "retrieval misses score zero.[/cyan]"
+    )
+    metrics = run_test_replay(_project_root(), settings, console.print)
+    console.print("[green]Test replay results:[/green]")
+    for name, value in metrics.to_dict().items():
+        if isinstance(value, float):
+            console.print(f"  {name}: {value:.4f}")
+        else:
+            console.print(f"  {name}: {value:,}")
 
 
 @app.command("benchmark")

@@ -1,3 +1,5 @@
+import os
+
 import polars as pl
 
 from rekindle.ranking.model import RANKER_FEATURES, _group_sizes, _new_ranker
@@ -29,3 +31,7 @@ def test_ranker_uses_one_native_worker_on_the_reference_mac() -> None:
     )
 
     assert ranker.get_params()["n_jobs"] == 1
+
+
+def test_project_caps_openmp_before_loading_native_ml_runtimes() -> None:
+    assert os.environ["OMP_NUM_THREADS"] == "1"

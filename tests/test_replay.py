@@ -2,12 +2,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from rekindle.baselines.popularity import TimeDecayedPopularity
 from rekindle.data.replay import (
     derive_time_boundaries,
     is_replay_safe,
     iterative_k_core,
     split_name,
 )
+from rekindle.evaluation.replay import _ranker_features
+from rekindle.ranking.model import RANKER_FEATURES
 
 
 def _timestamp(day: int) -> datetime:
@@ -47,3 +50,26 @@ def test_history_must_strictly_precede_target() -> None:
 def test_rejects_invalid_split_fractions() -> None:
     with pytest.raises(ValueError, match="less than one"):
         derive_time_boundaries([_timestamp(day) for day in range(4)], 0.6, 0.4)
+
+
+def test_test_replay_builds_the_same_ranker_feature_shape_as_training() -> None:
+    popularity = TimeDecayedPopularity(
+        half_life_days=30,
+        reference_time=_timestamp(1),
+        scores={"a": 3.0, "c": 1.0},
+    )
+
+    features = _ranker_features(
+        candidate_indices=[0, 2],
+        source_ranks={0: (1, None, None), 2: (None, 2, 1)},
+        item_ids=["a", "b", "c"],
+        history=[1],
+        history_length=7,
+        metadata={"a": ("electronics", "brand-a"), "b": ("electronics", "brand-b")},
+        popularity=popularity,
+    )
+
+    assert features.shape == (2, len(RANKER_FEATURES))
+    assert features[0, 0] == 1.0
+    assert features[1, 2] == 1.0
+    assert features[0, 5] == 7.0

@@ -13,3 +13,4 @@ def test_cli_exposes_pipeline_commands() -> None:
     assert "train-retriever" in result.output
     assert "evaluate-baselines" in result.output
     assert "evaluate-candidate-union" in result.output
+    assert "evaluate" in result.output

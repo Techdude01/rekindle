@@ -37,6 +37,7 @@ def retrieve_top_k(
     batch_size: int,
     device: torch.device | None = None,
     progress_callback: ProgressCallback | None = None,
+    progress_every_batches: int = 50,
 ) -> np.ndarray:
     """Return exact top-K unseen item indices for each chosen replay event."""
     if k < 1 or k > len(examples.item_ids):
@@ -62,7 +63,9 @@ def retrieve_top_k(
             if seen:
                 scores[row_index, seen] = -torch.inf
         candidate_rows.append(torch.topk(scores, k=k, dim=1).indices.cpu().numpy())
-        if progress_callback is not None:
+        if progress_callback is not None and (
+            batch_number % progress_every_batches == 0 or batch_number == total_batches
+        ):
             progress_callback(
                 f"Neural retrieval | batch {batch_number:,}/{total_batches:,} "
                 f"({batch_number / total_batches:.0%})."
