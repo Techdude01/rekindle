@@ -32,9 +32,12 @@ flowchart LR
 
 ## Status
 
-The project foundation is in place. The data-preparation and baseline stages are the first
-implementation milestone. Metrics and résumé claims will be added only after reproducible
-experiments complete.
+The core offline system is complete: disk-backed preparation, time-safe retrieval and ranking,
+end-to-end replay evaluation, confidence intervals, and local latency measurement. Cold-start
+simulation and an interactive demo remain planned follow-up work.
+
+The completed experiment, architecture decisions, metrics, and limitations are documented in the
+[Rekindle project report](docs/rekindle-report.md).
 
 ## Quick start
 
