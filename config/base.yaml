@@ -32,7 +32,7 @@ retrieval:
   full_catalog_evaluation_examples: 1000
   progress_every_batches: 50
   sampled_negatives_per_positive: 4
-  candidate_count: 200
+  candidate_count: 200 # per retrieval source; the three-source union has up to 600 candidates
   primary_recall_k: 100
   hnsw_m: 32
   hnsw_ef_search: 128

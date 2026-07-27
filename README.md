@@ -23,7 +23,7 @@ flowchart LR
     B --> C[Time-safe replay splits]
     C --> D[History-aware two-tower retrieval]
     D --> E[FAISS: exact and HNSW]
-    E --> F[Top 200 candidates]
+    E --> F[Up to 600 multi-channel candidates]
     C --> G[Time-safe ranking features]
     F --> H[LightGBM LambdaRank]
     G --> H

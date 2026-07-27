@@ -12,7 +12,10 @@ from rekindle.baselines.popularity import TimeDecayedPopularity
 from rekindle.config import load_config
 from rekindle.data.prepare import prepare_dataset
 from rekindle.evaluation.baselines import item_cf_recall_at_k, popularity_recall_at_k
+from rekindle.evaluation.candidate_union import evaluate_candidate_union
 from rekindle.evaluation.metrics import fixed_subset_indices
+from rekindle.retrieval.inference import load_retriever, retrieve_top_k
+from rekindle.retrieval.model import select_device
 from rekindle.retrieval.sequences import (
     SequenceExamples,
     build_sequence_examples,
@@ -195,6 +198,73 @@ def evaluate_baselines(
     console.print("[green]Baseline Recall@100 results:[/green]")
     for result in results:
         console.print(f"  {result['name']}: {result['recall_at_100']:.4f}")
+
+
+@app.command("evaluate-candidate-union")
+def evaluate_candidate_union_command(
+    config: Path = CONFIG_OPTION,
+    retriever_artifact: str = typer.Option(
+        "retriever-history-only",
+        "--retriever-artifact",
+        help="Ignored artifact directory containing model.pt.",
+    ),
+) -> None:
+    """Measure top-200 channel Recall and the coverage of their up-to-600-item union."""
+    if Path(retriever_artifact).name != retriever_artifact:
+        raise typer.BadParameter("retriever-artifact must be a single directory name.")
+    settings = _load(config)
+    project_root = _project_root()
+    validation_directory = project_root / "artifacts/sequences/validation"
+    baseline_directory = project_root / "artifacts/baselines"
+    model_path = project_root / "artifacts" / retriever_artifact / "model.pt"
+    if (
+        not validation_directory.exists()
+        or not baseline_directory.exists()
+        or not model_path.exists()
+    ):
+        raise typer.BadParameter(
+            "Run build-sequences, fit-baselines, and the selected retriever training first."
+        )
+
+    examples = SequenceExamples.load(validation_directory)
+    selection_indices = fixed_subset_indices(
+        examples.count,
+        settings["retrieval"]["full_catalog_evaluation_examples"],
+        seed=settings["project"]["seed"] + 2,
+    )
+    candidate_count = settings["retrieval"]["candidate_count"]
+    device = select_device()
+    console.print(f"[cyan]Loading {retriever_artifact} on {device.type}...[/cyan]")
+    retriever = load_retriever(model_path, device)
+    neural_candidates = retrieve_top_k(
+        retriever,
+        examples,
+        selection_indices,
+        k=candidate_count,
+        batch_size=settings["retrieval"]["evaluation_batch_size"],
+        device=device,
+        progress_callback=console.print,
+    )
+    popularity = TimeDecayedPopularity.load(baseline_directory / "popularity-30d.json")
+    item_cf = ItemItemCosine.load(baseline_directory / "item-cosine")
+    metrics = evaluate_candidate_union(
+        examples,
+        selection_indices,
+        neural_candidates,
+        popularity,
+        item_cf,
+        candidate_count=candidate_count,
+        progress_callback=console.print,
+    )
+    output_path = project_root / "artifacts/evaluation/validation-candidate-union.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(metrics.to_dict(), indent=2) + "\n", encoding="utf-8")
+    console.print("[green]Candidate-source results (each source top 200; union up to 600):[/green]")
+    for name, value in metrics.to_dict().items():
+        if name.endswith("recall_at_200"):
+            console.print(f"  {name}: {value:.4f}")
+    console.print(f"  union_candidate_recall: {metrics.union_candidate_recall:.4f}")
+    console.print(f"  average_unique_candidates: {metrics.average_unique_candidates:.1f}")
 
 
 @app.command("generate-ranker-data")

@@ -25,7 +25,8 @@ last 20 interacted products. Warm retrieval items use ID embeddings only. Metada
 separate downstream roles: time-safe similarity/affinity features for the ranker, and a
 metadata-only TF-IDF representation for the synthetic cold-item fallback. A
 sampled-softmax/contrastive objective uses in-batch and a uniform/popularity negative mixture.
-FAISS retrieves 200 candidates; LightGBM LambdaRank returns 10 products.
+Each retrieval source supplies up to 200 candidates; the deduplicated neural, item-CF, and
+popularity union has at most 600 candidates for LightGBM LambdaRank to reduce to 10 products.
 
 Ranker training uses rolling temporal cross-fitting: a retriever trained on an earlier fold
 generates candidate lists for the next fold. This prevents a ranking feature from receiving a

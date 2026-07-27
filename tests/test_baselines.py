@@ -6,6 +6,7 @@ import polars as pl
 from rekindle.baselines.item_cf import ItemItemCosine
 from rekindle.baselines.popularity import TimeDecayedPopularity
 from rekindle.evaluation.baselines import popularity_recall_at_k
+from rekindle.evaluation.candidate_union import evaluate_candidate_union
 from rekindle.retrieval.sequences import SequenceExamples
 
 
@@ -83,3 +84,42 @@ def test_popularity_replay_uses_only_prior_products_when_filtering_candidates() 
     )
 
     assert recall == 1.0
+
+
+def test_candidate_union_recovers_an_item_missed_by_the_neural_and_popularity_channels() -> None:
+    interactions = pl.DataFrame(
+        {
+            "user_id": ["u1", "u1", "u2", "u2", "u3", "u3"],
+            "item_id": ["a", "c", "a", "c", "a", "b"],
+            "event_ts": [datetime(2024, 1, 1, tzinfo=UTC)] * 6,
+        }
+    )
+    item_cf = ItemItemCosine.fit(interactions)
+    examples = SequenceExamples(
+        user_indices=np.array([0], dtype=np.int32),
+        histories=np.array([[-1, -1, -1, 0]], dtype=np.int32),
+        targets=np.array([2], dtype=np.int32),
+        prior_event_counts=np.array([1], dtype=np.int32),
+        user_ids=["u1"],
+        item_ids=["a", "b", "c", "d"],
+        user_item_sequences=[[0, 2]],
+    )
+    popularity = TimeDecayedPopularity(
+        half_life_days=30,
+        reference_time=datetime(2024, 1, 1, tzinfo=UTC),
+        scores={"b": 4.0, "d": 3.0},
+    )
+
+    metrics = evaluate_candidate_union(
+        examples,
+        example_indices=np.array([0], dtype=np.int64),
+        neural_candidates=np.array([[3]], dtype=np.int32),
+        popularity=popularity,
+        item_cf=item_cf,
+        candidate_count=1,
+    )
+
+    assert metrics.neural_recall_at_200 == 0.0
+    assert metrics.popularity_recall_at_200 == 0.0
+    assert metrics.item_cf_recall_at_200 == 1.0
+    assert metrics.union_candidate_recall == 1.0
