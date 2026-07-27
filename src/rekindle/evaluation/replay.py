@@ -36,6 +36,12 @@ class ReplayMetrics:
     neural_recall_at_100: float
     neural_recall_at_200: float
     candidate_union_recall: float
+    neural_only_hit_rate_at_10: float
+    neural_only_ndcg_at_10: float
+    popularity_hit_rate_at_10: float
+    popularity_ndcg_at_10: float
+    item_cf_hit_rate_at_10: float
+    item_cf_ndcg_at_10: float
     end_to_end_hit_rate_at_10: float
     end_to_end_ndcg_at_10: float
     average_unique_candidates: float
@@ -123,7 +129,10 @@ def _score_examples(
     ]
     neural_hits = {50: 0, 100: 0, 200: 0}
     union_hits = ranker_hits = 0
-    ndcg_total = 0.0
+    ranker_ndcg_total = 0.0
+    neural_hits_at_10 = neural_ndcg_total = 0.0
+    popularity_hits_at_10 = popularity_ndcg_total = 0.0
+    item_cf_hits_at_10 = item_cf_ndcg_total = 0.0
     candidate_counts: list[int] = []
     for example_index in range(examples.count):
         user_index = int(examples.user_indices[example_index])
@@ -141,6 +150,15 @@ def _score_examples(
                 limit=candidate_count,
             )
         ]
+        neural_hit, neural_ndcg = _top_k_metrics(target, neural, k=10)
+        popularity_hit, popularity_ndcg = _top_k_metrics(target, popular, k=10)
+        item_cf_hit, item_cf_ndcg = _top_k_metrics(target, collaborative, k=10)
+        neural_hits_at_10 += neural_hit
+        neural_ndcg_total += neural_ndcg
+        popularity_hits_at_10 += popularity_hit
+        popularity_ndcg_total += popularity_ndcg
+        item_cf_hits_at_10 += item_cf_hit
+        item_cf_ndcg_total += item_cf_ndcg
         for cutoff in neural_hits:
             neural_hits[cutoff] += target in neural[:cutoff]
         source_ranks = _merge_source_ranks(neural, popular, collaborative)
@@ -164,7 +182,7 @@ def _score_examples(
             rank = int(np.flatnonzero(ordered_positions == target_position)[0]) + 1
             if rank <= 10:
                 ranker_hits += 1
-                ndcg_total += 1.0 / math.log2(rank + 1)
+                ranker_ndcg_total += 1.0 / math.log2(rank + 1)
         completed = example_index + 1
         if progress_callback is not None and (completed % 100 == 0 or completed == examples.count):
             progress_callback(
@@ -177,10 +195,25 @@ def _score_examples(
         neural_recall_at_100=neural_hits[100] / examples.count,
         neural_recall_at_200=neural_hits[200] / examples.count,
         candidate_union_recall=union_hits / examples.count,
+        neural_only_hit_rate_at_10=neural_hits_at_10 / examples.count,
+        neural_only_ndcg_at_10=neural_ndcg_total / examples.count,
+        popularity_hit_rate_at_10=popularity_hits_at_10 / examples.count,
+        popularity_ndcg_at_10=popularity_ndcg_total / examples.count,
+        item_cf_hit_rate_at_10=item_cf_hits_at_10 / examples.count,
+        item_cf_ndcg_at_10=item_cf_ndcg_total / examples.count,
         end_to_end_hit_rate_at_10=ranker_hits / examples.count,
-        end_to_end_ndcg_at_10=ndcg_total / examples.count,
+        end_to_end_ndcg_at_10=ranker_ndcg_total / examples.count,
         average_unique_candidates=float(np.mean(candidate_counts)),
     )
+
+
+def _top_k_metrics(target: int, ranking: list[int], k: int) -> tuple[int, float]:
+    """Return HitRate and single-positive NDCG for one already-ranked candidate list."""
+    try:
+        rank = ranking[:k].index(target) + 1
+    except ValueError:
+        return 0, 0.0
+    return 1, 1.0 / math.log2(rank + 1)
 
 
 def _ranker_features(
