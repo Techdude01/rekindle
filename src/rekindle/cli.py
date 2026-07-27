@@ -68,6 +68,7 @@ def fit_baselines(
     item_cf = ItemItemCosine.fit(
         events,
         recency_decay=settings["baselines"]["item_cf_recency_decay"],
+        history_size=settings["baselines"]["item_cf_history_size"],
     )
     item_cf.save(artifact_directory / "item-cosine")
     console.print(

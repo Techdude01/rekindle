@@ -20,12 +20,17 @@ class ItemItemCosine:
     item_to_index: dict[str, int]
     item_norms: np.ndarray
     recency_decay: float
+    history_size: int
 
     @classmethod
-    def fit(cls, events: pl.DataFrame, recency_decay: float = 0.8) -> ItemItemCosine:
+    def fit(
+        cls, events: pl.DataFrame, recency_decay: float = 0.8, history_size: int = 20
+    ) -> ItemItemCosine:
         """Build a training-only sparse user-item matrix without materializing item pairs."""
         if not 0 < recency_decay <= 1:
             raise ValueError("recency_decay must be in (0, 1]")
+        if history_size < 1:
+            raise ValueError("history_size must be positive")
         if events.is_empty():
             raise ValueError("Cannot fit item-item CF on an empty event table")
 
@@ -59,6 +64,7 @@ class ItemItemCosine:
             item_to_index=item_to_index,
             item_norms=item_norms,
             recency_decay=recency_decay,
+            history_size=history_size,
         )
 
     def recommend(
@@ -71,9 +77,10 @@ class ItemItemCosine:
         if limit < 1:
             raise ValueError("limit must be positive")
 
+        full_history = history_item_ids
         history_indices = [
             self.item_to_index[item_id]
-            for item_id in history_item_ids
+            for item_id in full_history[-self.history_size :]
             if item_id in self.item_to_index
         ]
         if not history_indices:
@@ -101,7 +108,7 @@ class ItemItemCosine:
         )
 
         seen = set(seen_item_ids or ())
-        seen.update(history_item_ids)
+        seen.update(full_history)
         seen_indices = [
             self.item_to_index[item_id] for item_id in seen if item_id in self.item_to_index
         ]
@@ -116,7 +123,11 @@ class ItemItemCosine:
         sparse.save_npz(directory / "interactions.npz", self.interactions)
         (directory / "items.json").write_text(
             json.dumps(
-                {"item_ids": self.item_ids, "recency_decay": self.recency_decay},
+                {
+                    "item_ids": self.item_ids,
+                    "recency_decay": self.recency_decay,
+                    "history_size": self.history_size,
+                },
                 sort_keys=True,
             )
             + "\n",
@@ -136,4 +147,5 @@ class ItemItemCosine:
             item_to_index={item_id: index for index, item_id in enumerate(item_ids)},
             item_norms=item_norms,
             recency_decay=float(payload["recency_decay"]),
+            history_size=int(payload.get("history_size", 20)),
         )

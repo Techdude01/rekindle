@@ -60,6 +60,22 @@ def test_item_item_cosine_does_not_mutate_the_callers_seen_set() -> None:
     assert seen == {"b"}
 
 
+def test_item_item_cosine_uses_only_the_configured_recent_history_for_scoring() -> None:
+    events = pl.DataFrame(
+        {
+            "user_id": ["u1", "u1", "u2", "u2", "u3", "u3"],
+            "item_id": ["old", "a", "old", "old_match", "a", "recent_match"],
+            "event_ts": [datetime(2024, 1, 1, tzinfo=UTC)] * 6,
+        }
+    )
+    model = ItemItemCosine.fit(events, history_size=1)
+
+    recommendations = model.recommend(history_item_ids=["old", "a"], limit=2)
+
+    assert recommendations[0] == "recent_match"
+    assert "old" not in recommendations
+
+
 def test_popularity_replay_uses_only_prior_products_when_filtering_candidates() -> None:
     examples = SequenceExamples(
         user_indices=np.array([0], dtype=np.int32),

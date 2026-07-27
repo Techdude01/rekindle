@@ -95,6 +95,7 @@ def generate_cross_fitted_ranker_data(
         item_cf = ItemItemCosine.fit(
             training_events,
             recency_decay=config["baselines"]["item_cf_recency_decay"],
+            history_size=config["baselines"]["item_cf_history_size"],
         )
         candidate_path = fold_directory / "candidates.parquet"
         summary = _write_ranker_candidates(
