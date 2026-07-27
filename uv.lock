@@ -2394,6 +2394,7 @@ dev = [
 model = [
     { name = "faiss-cpu" },
     { name = "lightgbm" },
+    { name = "scikit-learn" },
     { name = "torch" },
 ]
 tracking = [
@@ -2414,6 +2415,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=13.9.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.0" },
+    { name = "scikit-learn", marker = "extra == 'model'", specifier = ">=1.6.0" },
     { name = "scipy", specifier = ">=1.15.0" },
     { name = "torch", marker = "extra == 'model'", specifier = ">=2.6.0" },
     { name = "typer", specifier = ">=0.15.0" },

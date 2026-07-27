@@ -135,6 +135,8 @@ def _new_ranker(
         min_child_samples=ranking_config["min_child_samples"],
         reg_lambda=ranking_config["reg_lambda"],
         random_state=seed,
-        n_jobs=-1,
+        # The full grouped matrix has crashed the macOS LightGBM runtime under
+        # all-core native parallelism; one worker is slower but stable on 18 GB.
+        n_jobs=ranking_config.get("n_jobs", 1),
         verbosity=-1,
     )

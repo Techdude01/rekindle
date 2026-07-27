@@ -48,6 +48,7 @@ ranking:
   min_child_samples: 100
   reg_lambda: 1.0
   early_stopping_rounds: 50
+  n_jobs: 1
 
 baselines:
   popularity_half_lives_days: [30, 90, 180]

@@ -20,6 +20,7 @@ dependencies = [
 model = [
   "faiss-cpu>=1.10.0",
   "lightgbm>=4.6.0",
+  "scikit-learn>=1.6.0",
   "torch>=2.6.0",
 ]
 tracking = ["mlflow>=2.20.0"]
