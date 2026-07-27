@@ -39,6 +39,5 @@ def bootstrap_mean_confidence_intervals(
     tail = (1.0 - confidence_level) / 2.0
     bounds = np.quantile(estimates, [tail, 1.0 - tail], axis=0)
     return {
-        name: (float(bounds[0, index]), float(bounds[1, index]))
-        for index, name in enumerate(names)
+        name: (float(bounds[0, index]), float(bounds[1, index])) for index, name in enumerate(names)
     }

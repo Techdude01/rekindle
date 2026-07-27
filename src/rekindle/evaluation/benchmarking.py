@@ -246,8 +246,7 @@ def _load_ranker_inputs(path: Path, query_count: int, seed: int) -> list[np.ndar
     if len(selected) < query_count:
         raise ValueError("Ranker benchmark needs more candidate groups than are available")
     return [
-        groups[int(index)].select(RANKER_FEATURES).cast(pl.Float32).to_numpy()
-        for index in selected
+        groups[int(index)].select(RANKER_FEATURES).cast(pl.Float32).to_numpy() for index in selected
     ]
 
 
