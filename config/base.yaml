@@ -40,6 +40,8 @@ retrieval:
 ranking:
   output_count: 10
   objective: lambdarank
+  temporal_folds: 3
+  queries_per_fold: 5000
 
 baselines:
   popularity_half_lives_days: [30, 90, 180]

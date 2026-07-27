@@ -32,6 +32,10 @@ Ranker training uses rolling temporal cross-fitting: a retriever trained on an e
 generates candidate lists for the next fold. This prevents a ranking feature from receiving a
 retrieval score inflated by having trained on its own target.
 
+For the 18 GB reference machine, ranker-data generation samples 5,000 eligible target events per
+fold after the fold-local 5-core is computed. It keeps only naturally retrieved target queries,
+never injects a missed target, and persists the resulting candidate rows as ignored Parquet.
+
 Sequential replay freezes model weights before test. It reports retrieval Recall@50/@100/@200,
 final NDCG@10, and slice metrics by user-history depth, item popularity, and warm/synthetic
 cold status. Exact FAISS is the quality baseline; HNSW is tuned on the measured

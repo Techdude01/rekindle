@@ -14,6 +14,7 @@ from rekindle.data.prepare import prepare_dataset
 from rekindle.evaluation.baselines import item_cf_recall_at_k, popularity_recall_at_k
 from rekindle.evaluation.candidate_union import evaluate_candidate_union
 from rekindle.evaluation.metrics import fixed_subset_indices
+from rekindle.ranking.crossfit import generate_cross_fitted_ranker_data
 from rekindle.retrieval.inference import load_retriever, retrieve_top_k
 from rekindle.retrieval.model import select_device
 from rekindle.retrieval.sequences import (
@@ -268,9 +269,20 @@ def evaluate_candidate_union_command(
 
 
 @app.command("generate-ranker-data")
-def generate_ranker_data() -> None:
-    """Generate cross-fitted ranking candidates (implemented in milestone two)."""
-    raise typer.Exit("Ranker data generation is not implemented yet. Complete retrieval first.")
+def generate_ranker_data(
+    config: Path = CONFIG_OPTION,
+) -> None:
+    """Generate past-only, cross-fitted candidate rows for LambdaRank training."""
+    settings = _load(config)
+    project_root = _project_root()
+    if not (project_root / settings["data"]["prepared_interactions_path"]).exists():
+        raise typer.BadParameter("Run prepare-data before generating ranker data.")
+    console.print(
+        "[cyan]Generating three past-only ranker folds; each fold retrains its retriever. "
+        "This is intentionally a long local job.[/cyan]"
+    )
+    manifest = generate_cross_fitted_ranker_data(settings, project_root, console.print)
+    console.print(f"[green]Generated cross-fitted ranker data.[/green] Manifest: {manifest}")
 
 
 @app.command("train-ranker")

@@ -141,6 +141,7 @@ def train_retriever(
     output_directory: Path,
     progress_callback: ProgressCallback | None = None,
     use_user_embedding: bool = True,
+    diagnostic_example_indices: np.ndarray | None = None,
 ) -> TrainingResult:
     """Train a two-tower model and early-stop on sampled validation Recall@100."""
     if train_examples.item_ids != validation_examples.item_ids:
@@ -339,6 +340,7 @@ def train_retriever(
         progress_callback=progress_callback,
         progress_prefix="Final sampled validation",
         progress_every_batches=retrieval_config.get("progress_every_batches", 50),
+        example_indices=diagnostic_example_indices,
     )
     _report(
         progress_callback,
@@ -387,6 +389,7 @@ def sampled_recall_at_k(
     progress_callback: ProgressCallback | None = None,
     progress_prefix: str = "Validation",
     progress_every_batches: int = 50,
+    example_indices: np.ndarray | None = None,
 ) -> float:
     """Score targets against a fixed, seen-item-filtered sampled candidate set."""
     if examples.count == 0:
@@ -394,22 +397,27 @@ def sampled_recall_at_k(
     if k > negative_count + 1:
         raise ValueError("Recall K cannot exceed the sampled candidate count")
     model.eval()
+    selected = (
+        np.arange(examples.count, dtype=np.int64) if example_indices is None else example_indices
+    )
+    if len(selected) == 0:
+        return 0.0
     sampler = NegativeSampler(examples.user_item_sequences, len(examples.item_ids), seed)
     hits = 0
-    validation_batches = (examples.count + batch_size - 1) // batch_size
-    for batch_number, start in enumerate(range(0, examples.count, batch_size), start=1):
-        stop = min(start + batch_size, examples.count)
-        targets = examples.targets[start:stop]
+    validation_batches = (len(selected) + batch_size - 1) // batch_size
+    for batch_number, start in enumerate(range(0, len(selected), batch_size), start=1):
+        indices = selected[start : start + batch_size]
+        targets = examples.targets[indices]
         negatives = sampler.sample(
-            examples.user_indices[start:stop],
-            examples.prior_event_counts[start:stop],
+            examples.user_indices[indices],
+            examples.prior_event_counts[indices],
             targets,
             negative_count=negative_count,
             uniform_negative_count=negative_count // 2,
         )
         candidate_indices = np.concatenate((targets[:, None], negatives), axis=1)
-        user_indices = torch.from_numpy(examples.user_indices[start:stop]).to(device)
-        histories = torch.from_numpy(examples.histories[start:stop]).to(device)
+        user_indices = torch.from_numpy(examples.user_indices[indices]).to(device)
+        histories = torch.from_numpy(examples.histories[indices]).to(device)
         candidates = torch.from_numpy(candidate_indices).to(device)
         candidate_vectors = model.encode_items(candidates.reshape(-1)).reshape(
             len(targets),
@@ -429,7 +437,7 @@ def sampled_recall_at_k(
                 f"{progress_prefix} | batch {batch_number:,}/{validation_batches:,} "
                 f"({batch_number / validation_batches:.0%}).",
             )
-    return hits / examples.count
+    return hits / len(selected)
 
 
 @torch.no_grad()
