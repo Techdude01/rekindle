@@ -15,6 +15,7 @@ from rekindle.evaluation.baselines import item_cf_recall_at_k, popularity_recall
 from rekindle.evaluation.candidate_union import evaluate_candidate_union
 from rekindle.evaluation.metrics import fixed_subset_indices
 from rekindle.ranking.crossfit import generate_cross_fitted_ranker_data
+from rekindle.ranking.model import train_ranker as train_lambda_ranker
 from rekindle.retrieval.inference import load_retriever, retrieve_top_k
 from rekindle.retrieval.model import select_device
 from rekindle.retrieval.sequences import (
@@ -286,9 +287,30 @@ def generate_ranker_data(
 
 
 @app.command("train-ranker")
-def train_ranker() -> None:
-    """Train the LightGBM LambdaRank reranker (implemented in milestone two)."""
-    raise typer.Exit("The ranker is not implemented yet. Complete ranker data generation first.")
+def train_ranker(
+    config: Path = CONFIG_OPTION,
+) -> None:
+    """Select and refit a LightGBM LambdaRank model from cross-fitted candidate rows."""
+    settings = _load(config)
+    candidate_directory = _project_root() / "artifacts/ranker-crossfit"
+    if not (candidate_directory / "manifest.json").exists():
+        raise typer.BadParameter("Run generate-ranker-data before training the ranker.")
+    console.print(
+        "[cyan]Selecting LambdaRank capacity on fold 3, then refitting on all folds...[/cyan]"
+    )
+    result = train_lambda_ranker(
+        candidate_directory,
+        settings["ranking"],
+        settings["project"]["seed"],
+        _project_root() / "artifacts/ranker",
+    )
+    console.print(
+        "[green]Trained ranker.[/green] "
+        f"Fold-3 NDCG@10: {result.validation_ndcg_at_10:.4f}; "
+        f"selected trees: {result.best_iteration}; "
+        f"training queries: {result.training_queries:,}; "
+        f"validation queries: {result.validation_queries:,}."
+    )
 
 
 @app.command("evaluate")

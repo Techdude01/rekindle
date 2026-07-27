@@ -35,6 +35,9 @@ retrieval score inflated by having trained on its own target.
 For the 18 GB reference machine, ranker-data generation samples 5,000 eligible target events per
 fold after the fold-local 5-core is computed. It keeps only naturally retrieved target queries,
 never injects a missed target, and persists the resulting candidate rows as ignored Parquet.
+LambdaRank selects its tree count on fold 3, then refits that capacity on all cross-fitted rows.
+Its NDCG@10 is conditional on successful retrieval; end-to-end replay later assigns zero to
+retrieval misses.
 
 Sequential replay freezes model weights before test. It reports retrieval Recall@50/@100/@200,
 final NDCG@10, and slice metrics by user-history depth, item popularity, and warm/synthetic

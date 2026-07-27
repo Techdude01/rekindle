@@ -42,6 +42,12 @@ ranking:
   objective: lambdarank
   temporal_folds: 3
   queries_per_fold: 5000
+  n_estimators: 500
+  learning_rate: 0.05
+  num_leaves: 31
+  min_child_samples: 100
+  reg_lambda: 1.0
+  early_stopping_rounds: 50
 
 baselines:
   popularity_half_lives_days: [30, 90, 180]
