@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import numpy as np
 import pytest
 
 from rekindle.baselines.popularity import TimeDecayedPopularity
@@ -9,6 +10,7 @@ from rekindle.data.replay import (
     iterative_k_core,
     split_name,
 )
+from rekindle.evaluation.benchmarking import _candidate_overlap, _latency_summary
 from rekindle.evaluation.bootstrap import bootstrap_mean_confidence_intervals
 from rekindle.evaluation.replay import _ranker_features, _top_k_metrics
 from rekindle.ranking.model import RANKER_FEATURES
@@ -96,3 +98,21 @@ def test_paired_bootstrap_intervals_are_reproducible_and_preserve_constant_score
 
     assert first == second
     assert first["constant"] == (0.25, 0.25)
+
+
+def test_latency_summary_reports_percentiles_and_sequential_throughput() -> None:
+    summary = _latency_summary(np.array([1.0, 2.0, 3.0, 4.0]))
+
+    assert summary.requests == 4
+    assert summary.mean_ms == 2.5
+    assert summary.p50_ms == 2.5
+    assert summary.queries_per_second == pytest.approx(400.0)
+
+
+def test_candidate_overlap_compares_hnsw_to_exact_candidates() -> None:
+    overlap = _candidate_overlap(
+        [np.array([0, 1, 2]), np.array([3, 4, 5])],
+        [np.array([0, 2, 8]), np.array([3, 4, 9])],
+    )
+
+    assert overlap == pytest.approx(2 / 3)

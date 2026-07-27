@@ -12,6 +12,7 @@ from rekindle.baselines.popularity import TimeDecayedPopularity
 from rekindle.config import load_config
 from rekindle.data.prepare import prepare_dataset
 from rekindle.evaluation.baselines import item_cf_recall_at_k, popularity_recall_at_k
+from rekindle.evaluation.benchmarking import run_latency_benchmark
 from rekindle.evaluation.candidate_union import evaluate_candidate_union
 from rekindle.evaluation.metrics import fixed_subset_indices
 from rekindle.evaluation.replay import run_test_replay
@@ -343,9 +344,43 @@ def evaluate(
 
 
 @app.command("benchmark")
-def benchmark() -> None:
-    """Run local retrieval/ranking latency benchmarks (implemented in milestone three)."""
-    raise typer.Exit("Benchmarking is not implemented yet. Complete model training first.")
+def benchmark(
+    config: Path = CONFIG_OPTION,
+) -> None:
+    """Measure local exact/HNSW retrieval and LambdaRank inference latency."""
+    settings = _load(config)
+    project_root = _project_root()
+    required_paths = (
+        project_root / "artifacts/retriever-history-only/model.pt",
+        project_root / "artifacts/ranker/model.txt",
+        project_root / "artifacts/ranker-crossfit/fold-3/candidates.parquet",
+    )
+    if any(not path.exists() for path in required_paths):
+        raise typer.BadParameter(
+            "Train the retriever and ranker before running latency benchmarks."
+        )
+    console.print(
+        "[cyan]Benchmarking frozen local components with 1,000 warm replay queries; "
+        "model and index build time are excluded.[/cyan]"
+    )
+    metrics = run_latency_benchmark(project_root, settings, console.print)
+    console.print("[green]Latency benchmark results (single-worker, warm process):[/green]")
+    for name, summary in (
+        ("query encoding + transfer", metrics.query_encoding_and_transfer),
+        ("exact FAISS retrieval", metrics.exact_faiss_retrieval),
+        ("HNSW retrieval", metrics.hnsw_retrieval),
+        ("LambdaRank scoring", metrics.ranker_scoring),
+    ):
+        console.print(
+            f"  {name}: P50 {summary.p50_ms:.3f} ms; P95 {summary.p95_ms:.3f} ms; "
+            f"{summary.queries_per_second:.1f} qps."
+        )
+    console.print(f"  exact target Recall@200: {metrics.exact_target_recall_at_200:.4f}")
+    console.print(f"  HNSW target Recall@200: {metrics.hnsw_target_recall_at_200:.4f}")
+    console.print(
+        "  HNSW overlap with exact candidates@200: "
+        f"{metrics.hnsw_exact_candidate_overlap_at_200:.4f}"
+    )
 
 
 @app.command("recommend")

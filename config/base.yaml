@@ -59,6 +59,11 @@ evaluation:
   bootstrap_resamples: 2000
   bootstrap_confidence_level: 0.95
 
+benchmark:
+  query_count: 1000
+  warmup_queries: 100
+  faiss_threads: 1
+
 tracking:
   uri: file:./mlruns
   experiment_name: rekindle
